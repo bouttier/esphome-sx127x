@@ -1,0 +1,233 @@
+from esphome import automation, pins
+import esphome.codegen as cg
+import esphome.config_validation as cv
+from esphome.const import (
+    CONF_ID,
+    CONF_NAME,
+    CONF_PAYLOAD,
+    CONF_TRIGGER_ID,
+)
+from esphome.components import spi
+
+MULTI_CONF = True
+CODEOWNERS = ["@bouttier"]
+DEPENDANCIES = ["spi"]
+
+CONF_DIO0_PIN = "dio0_pin"
+CONF_LORA_BANDWIDTH = "lora_bandwidth"
+CONF_LORA_CODINGRATE = "lora_codingrate"
+CONF_LORA_CRC = "lora_crc"
+CONF_LORA_INVERT_IQ = "lora_invert_iq"
+CONF_LORA_SYNCWORD = "lora_syncword"
+CONF_LORA_PREAMBLE_LENGTH = "lora_preamble_length"
+CONF_LORA_SPREADING_FACTOR = "lora_spreading_factor"
+CONF_ON_PACKET = "on_packet"
+CONF_RESET_PIN = "reset_pin"
+CONF_RF_FREQUENCY = "rf_frequency"
+CONF_TX_POWER = "tx_power"
+CONF_RX_ON_BOOT = "rx_on_boot"
+
+sx127x_ns = cg.esphome_ns.namespace("sx127x")
+
+SX127XComponent = sx127x_ns.class_(
+    "SX127XComponent",
+    cg.Component,
+    spi.SPIDevice,
+)
+SX127XSendAction = sx127x_ns.class_(
+    "SX127XSendAction",
+    automation.Action,
+)
+SX127XStartRXAction = sx127x_ns.class_(
+    "SX127XStartRXAction",
+    automation.Action,
+    cg.Parented.template(SX127XComponent),
+)
+SX127XStopRXAction = sx127x_ns.class_(
+    "SX127XStopRXAction",
+    automation.Action,
+    cg.Parented.template(SX127XComponent),
+)
+SX127XRecvTrigger = sx127x_ns.class_(
+    "SX127XRecvTrigger",
+    automation.Trigger.template(cg.std_vector.template(cg.uint8)),
+)
+
+
+def validate_raw_data(value):
+    if isinstance(value, str):
+        return list(value.encode("utf-8"))
+    if isinstance(value, list):
+        return cv.Schema([cv.hex_uint8_t])(value)
+    raise cv.Invalid(
+        "data must either be a string wrapped in quotes or a list of bytes"
+    )
+
+
+SF = {
+    "SF6": cg.RawExpression("SX127x_SF_6"),
+    "SF7": cg.RawExpression("SX127x_SF_7"),
+    "SF8": cg.RawExpression("SX127x_SF_8"),
+    "SF9": cg.RawExpression("SX127x_SF_9"),
+    "SF10": cg.RawExpression("SX127x_SF_10"),
+    "SF11": cg.RawExpression("SX127x_SF_11"),
+    "SF12": cg.RawExpression("SX127x_SF_12"),
+}
+CR = {
+    "CR_4_5": cg.RawExpression("SX127x_CR_4_5"),
+    "CR_4_6": cg.RawExpression("SX127x_CR_4_6"),
+    "CR_4_7": cg.RawExpression("SX127x_CR_4_7"),
+    "CR_4_8": cg.RawExpression("SX127x_CR_4_8"),
+}
+BW = {
+    7800: cg.RawExpression("SX127x_BW_7800"),
+    10400: cg.RawExpression("SX127x_BW_10400"),
+    15600: cg.RawExpression("SX127x_BW_15600"),
+    20800: cg.RawExpression("SX127x_BW_20800"),
+    31250: cg.RawExpression("SX127x_BW_31250"),
+    41700: cg.RawExpression("SX127x_BW_41700"),
+    62500: cg.RawExpression("SX127x_BW_62500"),
+    125000: cg.RawExpression("SX127x_BW_125000"),
+    250000: cg.RawExpression("SX127x_BW_250000"),
+    500000: cg.RawExpression("SX127x_BW_500000"),
+}
+
+# LoRa Radio Parameters
+CONF_DEFAULT_RF_FREQUENCY = 915e6  # Hz
+CONF_DEFAULT_TX_POWER = 4  # dBm
+CONF_DEFAULT_LORA_BANDWIDTH = 125e3  # Hz
+CONF_DEFAULT_LORA_SPREADING_FACTOR = "SF7"  # [SF6..SF12]
+CONF_DEFAULT_LORA_CODINGRATE = "CR_4_5"  # [4/5, 4/6, 4/7, 4/8]
+CONF_DEFAULT_LORA_PREAMBLE_LENGTH = 8
+CONF_DEFAULT_LORA_CRC = True
+CONF_DEFAULT_LORA_IQ_INVERSION = False
+CONF_DEFAULT_LORA_SYNCWORD = 0x12
+CONF_DEFAULT_RX_ON_BOOT = True
+
+CONFIG_SCHEMA = (
+    cv.Schema(
+        {
+            cv.GenerateID(): cv.declare_id(SX127XComponent),
+            cv.Optional(CONF_NAME): cv.string,
+            cv.Required(CONF_RESET_PIN): pins.gpio_output_pin_schema,
+            cv.Required(CONF_DIO0_PIN): pins.internal_gpio_output_pin_schema,
+            cv.Optional(
+                CONF_RF_FREQUENCY, default=CONF_DEFAULT_RF_FREQUENCY
+            ): cv.int_range(min=137000000, max=1020000000),
+            cv.Optional(CONF_TX_POWER, default=CONF_DEFAULT_TX_POWER): cv.int_,
+            cv.Optional(
+                CONF_LORA_BANDWIDTH, default=CONF_DEFAULT_LORA_BANDWIDTH
+            ): cv.enum(BW),
+            cv.Optional(
+                CONF_LORA_SPREADING_FACTOR, default=CONF_DEFAULT_LORA_SPREADING_FACTOR
+            ): cv.enum(SF),
+            cv.Optional(CONF_LORA_CRC, default=CONF_DEFAULT_LORA_CRC): cv.boolean,
+            cv.Optional(
+                CONF_LORA_CODINGRATE, default=CONF_DEFAULT_LORA_CODINGRATE
+            ): cv.enum(CR),
+            cv.Optional(
+                CONF_LORA_PREAMBLE_LENGTH, default=CONF_DEFAULT_LORA_PREAMBLE_LENGTH
+            ): cv.int_,
+            cv.Optional(
+                CONF_LORA_SYNCWORD, default=CONF_DEFAULT_LORA_SYNCWORD
+            ): cv.int_,
+            cv.Optional(
+                CONF_LORA_INVERT_IQ, default=CONF_DEFAULT_LORA_IQ_INVERSION
+            ): cv.boolean,
+            cv.Optional(CONF_RX_ON_BOOT, default=CONF_DEFAULT_RX_ON_BOOT): cv.boolean,
+            cv.Optional(CONF_ON_PACKET): automation.validate_automation(
+                {
+                    cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(SX127XRecvTrigger),
+                }
+            ),
+        }
+    )
+    .extend(cv.COMPONENT_SCHEMA)
+    .extend(
+        spi.spi_device_schema(
+            cs_pin_required=True, default_data_rate=4e6, default_mode="mode0"
+        )
+    )
+)
+
+
+async def to_code(config):
+    var = cg.new_Pvariable(config[CONF_ID])
+    await spi.register_spi_device(var, config)
+    await cg.register_component(var, config)
+
+    reset_pin = await cg.gpio_pin_expression(config[CONF_RESET_PIN])
+    cg.add(var.set_reset_pin(reset_pin))
+    dio0_pin = await cg.gpio_pin_expression(config[CONF_DIO0_PIN])
+    cg.add(var.set_dio0_pin(dio0_pin))
+
+    cg.add(var.set_rf_frequency(config[CONF_RF_FREQUENCY]))
+    cg.add(var.set_tx_power(config[CONF_TX_POWER]))
+    cg.add(var.set_lora_bandwidth(config[CONF_LORA_BANDWIDTH]))
+    cg.add(var.set_lora_spreading_factor(config[CONF_LORA_SPREADING_FACTOR]))
+    cg.add(var.set_lora_enable_crc(config[CONF_LORA_CRC]))
+    cg.add(var.set_lora_codingrate(config[CONF_LORA_CODINGRATE]))
+    cg.add(var.set_lora_preamble_length(config[CONF_LORA_PREAMBLE_LENGTH]))
+    cg.add(var.set_lora_syncword(config[CONF_LORA_SYNCWORD]))
+    cg.add(var.set_lora_invert_iq(config[CONF_LORA_INVERT_IQ]))
+    cg.add(var.set_enable_rx(config[CONF_RX_ON_BOOT]))
+
+    for conf in config.get("on_packet", []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(
+            trigger, [(cg.std_vector.template(cg.uint8), "x")], conf
+        )
+
+
+LORA_SEND_ACTION_SCHEMA = cv.maybe_simple_value(
+    {
+        cv.GenerateID(): cv.use_id(SX127XComponent),
+        cv.Required(CONF_PAYLOAD): cv.templatable(validate_raw_data),
+    },
+    key=CONF_PAYLOAD,
+)
+
+
+LORA_ACTION_SCHEMA = cv.Schema(
+    {
+        cv.GenerateID(): cv.use_id(SX127XComponent),
+    }
+)
+
+
+@automation.register_action("sx127x.send", SX127XSendAction, LORA_SEND_ACTION_SCHEMA)
+async def lora_send_action_to_code(config, action_id, template_arg, args):
+    # cg.add_library("dernasherbrezon/sx127x", "4.0.1")
+    cg.add_library(
+        name="sx127x",
+        version=None,
+        repository="https://github.com/bouttier/sx127x.git#callback_context",
+    )
+
+    var = cg.new_Pvariable(action_id, template_arg)
+    await cg.register_parented(var, config[CONF_ID])
+
+    payload = config[CONF_PAYLOAD]
+    if cg.is_template(payload):
+        template = await cg.templatable(payload, args, cg.std_vector.template(cg.uint8))
+        cg.add(var.set_payload_template(template))
+    else:
+        cg.add(var.set_payload_static(payload))
+
+    return var
+
+
+@automation.register_action(
+    "sx127x.start_rx",
+    SX127XStartRXAction,
+    automation.maybe_simple_id(LORA_ACTION_SCHEMA),
+)
+@automation.register_action(
+    "sx127x.stop_rx",
+    SX127XStopRXAction,
+    automation.maybe_simple_id(LORA_ACTION_SCHEMA),
+)
+async def deep_sleep_action_to_code(config, action_id, template_arg, args):
+    var = cg.new_Pvariable(action_id, template_arg)
+    await cg.register_parented(var, config[CONF_ID])
+    return var
