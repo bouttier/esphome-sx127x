@@ -4,6 +4,7 @@
 #include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 
+#include <queue>
 #include <vector>
 
 #include <sx127x.h>
@@ -16,20 +17,11 @@ class SX127XComponent
       public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_HIGH,
                             spi::CLOCK_PHASE_TRAILING, spi::DATA_RATE_4MHZ> {
 
-  /*friend esphome::spi::SPIClient;*/
-  /*friend esphome::spi::SPIDevice;*/
-  /*friend esphome::spi::SPIDelegate;*/
-
 public:
   void setup() override;
   void loop() override;
   void dump_config() override;
   void teardown();
-
-  void send(const std::vector<uint8_t> &payload) {
-    send(payload.data(), payload.size());
-  }
-  void send(const uint8_t *payload, uint8_t len);
 
   static void dio0_intr(SX127XComponent *arg);
   static void handle_interrupt_task(void *arg);
@@ -38,14 +30,17 @@ public:
   static void _rx_callback(sx127x_t *device, uint8_t *payload, uint16_t len);
   void rx_callback(std::vector<uint8_t> payload);
 
-  void enable_rx();
-  void disable_rx();
+  // Actions
+  void send(const std::vector<uint8_t> &payload);
+  void change_opmod(sx127x_mode_t opmod);
 
+  // Triggers
   void
   add_on_packet_callback(std::function<void(std::vector<uint8_t>)> &&callback) {
-    this->callback_.add(std::move(callback));
+    this->rx_callback_.add(std::move(callback));
   }
 
+  // Parameters
   void set_reset_pin(GPIOPin *reset_pin) { this->reset_pin_ = reset_pin; }
   void set_dio0_pin(InternalGPIOPin *dio0_pin) { this->dio0_pin_ = dio0_pin; }
   void set_rf_frequency(uint32_t rf_frequency) {
@@ -73,7 +68,11 @@ public:
   void set_lora_invert_iq(bool lora_invert_iq) {
     this->lora_invert_iq_ = lora_invert_iq;
   }
-  void set_enable_rx(bool enable_rx) { this->enable_rx_ = enable_rx; }
+  void set_opmod(sx127x_mode_t opmod) { this->opmod_ = opmod; }
+  void set_queue_len(unsigned int queue_len) { this->queue_len_ = queue_len; }
+
+  // Conditions
+  bool is_transmitting() { return this->transmitting_; }
 
   void packets_rx_zero(void) { this->lora_packets_rx_ = 0; }
   void packets_rx_incr(void) { this->lora_packets_rx_++; }
@@ -84,8 +83,8 @@ public:
   uint16_t packets_tx(void) { return lora_packets_tx_; }
 
 protected:
-  GPIOPin *reset_pin_;
-  InternalGPIOPin *dio0_pin_;
+  GPIOPin *reset_pin_{nullptr};
+  InternalGPIOPin *dio0_pin_{nullptr};
 
   // lora configuration
   uint32_t rf_frequency_;
@@ -97,19 +96,29 @@ protected:
   uint8_t lora_preamble_length_;
   uint8_t lora_syncword_;
   bool lora_invert_iq_;
+  sx127x_mode_t opmod_;
+  unsigned int queue_len_;
 
-  bool enable_rx_;
+  bool dio0_flag_;
+  bool transmitting_;
 
   uint16_t lora_packets_rx_;
   uint16_t lora_packets_tx_;
 
   sx127x_t device_;
   TaskHandle_t handle_interrupt_;
-  CallbackManager<void(std::vector<uint8_t>)> callback_;
+  CallbackManager<void(std::vector<uint8_t>)> rx_callback_;
+  std::deque<std::vector<uint8_t>> tx_queue_;
 
   void reset();
   void configure();
-}; // namespace sx127x
+  int update_opmod();
+  void send_next();
+  void xmit(const std::vector<uint8_t> &payload);
+  void xmit_timeout();
+}; // class SX127XComponent
+
+std::string opmod_to_string(sx127x_mode_t opmod);
 
 } // namespace sx127x
 } // namespace esphome

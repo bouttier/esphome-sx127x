@@ -2,10 +2,10 @@
 
 #include "sx127x_component.h"
 
-#include <driver/spi_master.h>
-#include <freertos/FreeRTOS.h>
+#include "esp_sleep.h"
+#ifdef USE_ESP32
 #include <freertos/task.h>
-#include <inttypes.h>
+#endif
 
 static const char *TAG = "sx127x";
 
@@ -15,19 +15,27 @@ namespace sx127x {
 void SX127XComponent::setup() {
   ESP_LOGCONFIG(TAG, "LoRa SX127X Setup (SX1278)");
 
+#ifdef USE_ESP32
+  bool reconfigure = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED;
+#else
+  bool reconfigure = true;
+#endif
+
   // We set state HIGH before pin setup to avoid accidental reset
   // This is especialy useful when waking-up from deep-sleep
   this->reset_pin_->digital_write(true);
   this->reset_pin_->setup();
-  this->dio0_pin_->setup();
+  if (dio0_pin_) {
+    this->dio0_pin_->setup();
+  }
 
   this->spi_setup();
 
-  // Radio Statistics
+  transmitting_ = false;
   this->packets_rx_zero();
   this->packets_tx_zero();
 
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED) {
+  if (reconfigure) {
     this->reset();
   }
 
@@ -39,24 +47,25 @@ void SX127XComponent::setup() {
   sx127x_set_user_context(this, &device_);
 
   // Interrupts
-  BaseType_t task_code =
-      xTaskCreatePinnedToCore(handle_interrupt_task, "sx127x", 8196, this, 2,
-                              &handle_interrupt_, xPortGetCoreID());
-  if (task_code != pdPASS) {
-    ESP_LOGE(TAG, "can't create task %d", task_code);
-    this->mark_failed();
-    return;
-  }
-
+  ESP_LOGCONFIG(TAG, "attach_interrupt on dio0 pin");
   sx127x_rx_set_callback(&SX127XComponent::_rx_callback, &device_);
   sx127x_tx_set_callback(&SX127XComponent::_tx_callback, &device_);
+  if (dio0_pin_) {
+    this->dio0_pin_->attach_interrupt(SX127XComponent::dio0_intr, this,
+                                      gpio::INTERRUPT_RISING_EDGE);
+    // If waking-up from deep-sleep, check any received message
+    dio0_flag_ = !reconfigure;
+  } else {
+    dio0_flag_ = true;
+  }
 
-  ESP_LOGCONFIG(TAG, "attach_interrupt on dio0 pin");
-  this->dio0_pin_->attach_interrupt(SX127XComponent::dio0_intr, this,
-                                    gpio::INTERRUPT_RISING_EDGE);
-
-  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED) {
+  if (reconfigure) {
     this->configure();
+  }
+
+  if (this->update_opmod()) {
+    this->mark_failed();
+    return;
   }
 }
 
@@ -81,7 +90,7 @@ void SX127XComponent::configure() {
     this->mark_failed();
     return;
   }
-  ESP_LOGCONFIG(TAG, "sx127x_lora_reset_fifo");
+  ESP_LOGCONFIG(TAG, "sx127x_lora_reset_fifo()");
   if (sx127x_lora_reset_fifo(&device_)) {
     this->mark_failed();
     return;
@@ -96,14 +105,13 @@ void SX127XComponent::configure() {
     this->mark_failed();
     return;
   }
-  ESP_LOGCONFIG(TAG, "sx127x_lora_set_modem_config_2(%d)",
+  ESP_LOGCONFIG(TAG, "sx127x_lora_set_modem_config_2(spreading_factor=%d)",
                 this->lora_spreading_factor_);
   if (sx127x_lora_set_modem_config_2(this->lora_spreading_factor_, &device_)) {
     this->mark_failed();
     return;
   }
-  ESP_LOGCONFIG(TAG, "sx127x_lora_set_modem_config_2(0x%x)",
-                this->lora_syncword_);
+  ESP_LOGCONFIG(TAG, "sx127x_lora_set_syncword(0x%x)", this->lora_syncword_);
   if (sx127x_lora_set_syncword(this->lora_syncword_, &device_)) {
     this->mark_failed();
     return;
@@ -115,18 +123,8 @@ void SX127XComponent::configure() {
     return;
   }
 
-  // RX
-  if (this->enable_rx_) {
-    ESP_LOGCONFIG(TAG, "sx127x_set_opmod(MODE_RX_CONT, MODULATION_LORA)");
-    if (sx127x_set_opmod(SX127x_MODE_RX_CONT, SX127x_MODULATION_LORA,
-                         &device_)) {
-      this->mark_failed();
-      return;
-    }
-  }
-
   // TX
-  ESP_LOGCONFIG(TAG, "sx127x_tx_set_pa_config(PA_PIN_BOOST, %d)",
+  ESP_LOGCONFIG(TAG, "sx127x_tx_set_pa_config(PA_PIN_BOOST, tx_power=%d)",
                 this->tx_power_);
   if (sx127x_tx_set_pa_config(SX127x_PA_PIN_BOOST, tx_power_, &device_)) {
     this->mark_failed();
@@ -145,114 +143,108 @@ void SX127XComponent::configure() {
   }
 }
 
+void IRAM_ATTR SX127XComponent::dio0_intr(SX127XComponent *sx127x) {
+  sx127x->dio0_flag_ = true;
+}
+
 void SX127XComponent::loop() {
-  static bool first_run = true;
-  if (first_run) {
-    first_run = false;
-    // If waking-up from deep-sleep, check if there is any pending message
-    // We trigger handle_interrup here to be sure that others components are
-    // available as they may be used in actions.
-    if (esp_sleep_get_wakeup_cause() != ESP_SLEEP_WAKEUP_UNDEFINED) {
-      xTaskNotifyGive(handle_interrupt_);
-    }
+  if (dio0_flag_) {
+    if (dio0_pin_)
+      dio0_flag_ = false;
+    ESP_LOGD(TAG, "sx127x_handle_interrupt");
+    sx127x_handle_interrupt(&device_);
   }
 }
 
-void SX127XComponent::send(const uint8_t *payload, uint8_t len) {
+void SX127XComponent::send(const std::vector<uint8_t> &payload) {
   if (this->is_failed()) {
     ESP_LOGD(TAG, "send: cancelled due to failed state");
     return;
   }
+  if (this->is_transmitting()) {
+    if (this->tx_queue_.size() >= this->queue_len_) {
+      ESP_LOGE(TAG, "send: queue is full, message dropped");
+      return;
+    }
+    this->tx_queue_.push_back(payload);
+    ESP_LOGD(TAG, "Enqueued %d-bytes LoRa message (pending: %d messages)",
+             payload.size(), tx_queue_.size());
+    return;
+  }
 
-  ESP_LOGD(TAG, "Send %d-bytes LoRa message", len);
-  if (sx127x_lora_tx_set_for_transmission(payload, len, &device_)) {
+  xmit(payload);
+}
+
+void SX127XComponent::send_next() {
+  if (this->tx_queue_.size()) {
+    auto payload = this->tx_queue_.front();
+    this->tx_queue_.pop_front();
+    this->xmit(payload);
+  } else {
+    this->transmitting_ = false;
+    this->update_opmod();
+  }
+}
+
+void SX127XComponent::xmit(const std::vector<uint8_t> &payload) {
+  this->transmitting_ = true;
+  ESP_LOGD(TAG, "Send %d-bytes LoRa message", payload.size());
+  if (sx127x_lora_tx_set_for_transmission(payload.data(), payload.size(),
+                                          &device_)) {
     ESP_LOGE(TAG, "sx127x_lora_tx_set_for_transmission failed");
     return;
   }
+  ESP_LOGD(TAG, "sx127x_set_opmod(TX)");
   if (sx127x_set_opmod(SX127x_MODE_TX, SX127x_MODULATION_LORA, &device_)) {
     ESP_LOGE(TAG, "sx127x_set_opmod failed");
     return;
   }
+  auto f = std::bind(&SX127XComponent::xmit_timeout, this);
+  this->set_timeout("timeout", 4000, f);
 }
 
-void IRAM_ATTR SX127XComponent::dio0_intr(SX127XComponent *sx127x) {
-  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-  vTaskNotifyGiveFromISR(sx127x->handle_interrupt_, &xHigherPriorityTaskWoken);
-  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-}
-
-void SX127XComponent::handle_interrupt_task(void *arg) {
-  SX127XComponent *sx127x = static_cast<SX127XComponent *>(arg);
-  while (1) {
-    if (ulTaskNotifyTake(pdTRUE, portMAX_DELAY) > 0) {
-      ESP_LOGD(TAG, "sx127x_handle_interrupt");
-      sx127x_handle_interrupt(&sx127x->device_);
-      if (sx127x->enable_rx_) {
-        ESP_LOGCONFIG(TAG, "sx127x_set_opmod(MODE_RX_CONT, MODULATION_LORA)");
-        if (sx127x_set_opmod(SX127x_MODE_RX_CONT, SX127x_MODULATION_LORA,
-                             &sx127x->device_)) {
-          ESP_LOGE(TAG, "failed to go back to rx mode");
-          return;
-        }
-      } else {
-        ESP_LOGCONFIG(TAG, "sx127x_set_opmod(MODE_SLEEP, MODULATION_LORA)");
-        if (sx127x_set_opmod(SX127x_MODE_SLEEP, SX127x_MODULATION_LORA,
-                             &sx127x->device_)) {
-          ESP_LOGE(TAG, "failed to go back to sleep mode");
-          return;
-        }
-      }
-    }
-  }
-}
-
-void SX127XComponent::_tx_callback(sx127x_t *device) {
-  void *context = sx127x_get_user_context(device);
-  SX127XComponent *sx127x = static_cast<SX127XComponent *>(context);
-  sx127x->tx_callback();
+void SX127XComponent::xmit_timeout() {
+  ESP_LOGE(TAG, "TX timout");
+  this->send_next();
 }
 
 void SX127XComponent::tx_callback() {
-  this->packets_tx_incr();
   ESP_LOGD(TAG, "TX done");
-}
-
-void SX127XComponent::_rx_callback(sx127x_t *device, uint8_t *payload,
-                                   uint16_t len) {
-  void *context = sx127x_get_user_context(device);
-  SX127XComponent *sx127x = static_cast<SX127XComponent *>(context);
-  sx127x->rx_callback(std::vector<uint8_t>(payload, payload + len));
+  this->cancel_timeout("timeout");
+  this->packets_tx_incr();
+  this->send_next();
 }
 
 void SX127XComponent::rx_callback(std::vector<uint8_t> payload) {
-  this->packets_rx_incr();
   ESP_LOGD(TAG, "RX %d bytes packet", payload.size());
-  this->callback_.call(payload);
+  this->update_opmod();
+  this->packets_rx_incr();
+  this->rx_callback_.call(payload);
 }
 
-void SX127XComponent::enable_rx() {
+void SX127XComponent::change_opmod(sx127x_mode_t opmod) {
   if (this->is_failed())
     return;
-  if (this->enable_rx_)
+  ESP_LOGD(TAG, "change opmod: %s > %s", opmod_to_string(this->opmod_).c_str(),
+           opmod_to_string(opmod).c_str());
+  if (this->opmod_ == opmod)
     return;
-  this->enable_rx_ = true;
-  if (sx127x_set_opmod(SX127x_MODE_RX_CONT, SX127x_MODULATION_LORA,
-                       &device_)) { // XXX no active TX?
-    ESP_LOGE(TAG, "failed to go back to rx mode");
-    return;
-  }
+  this->set_opmod(opmod);
+  this->update_opmod();
 }
-void SX127XComponent::disable_rx() {
-  if (this->is_failed())
-    return;
-  if (!this->enable_rx_)
-    return;
-  this->enable_rx_ = false;
-  if (sx127x_set_opmod(SX127x_MODE_SLEEP, SX127x_MODULATION_LORA,
-                       &device_)) { // XXX no active TX?
-    ESP_LOGE(TAG, "failed to go back to sleep mode");
-    return;
+
+int SX127XComponent::update_opmod() {
+  int ret = ESP_OK;
+
+  if (is_transmitting())
+    return ret;
+
+  ESP_LOGD(TAG, "sx127x_set_opmod(%s)", opmod_to_string(this->opmod_).c_str());
+  if ((ret =
+           sx127x_set_opmod(this->opmod_, SX127x_MODULATION_LORA, &device_))) {
+    ESP_LOGE(TAG, "sx127x_set_opmod failed");
   }
+  return ret;
 }
 
 void SX127XComponent::dump_config() {
@@ -339,8 +331,37 @@ void SX127XComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  LoRa Syncword:           0x%2X", this->lora_syncword_);
   ESP_LOGCONFIG(TAG, "  LoRa Invert IQ:           %3s",
                 YESNO(this->lora_invert_iq_));
-  ESP_LOGCONFIG(TAG, "  Start RX:                 %3s",
-                YESNO(this->enable_rx_));
+  ESP_LOGCONFIG(TAG, "  Opmod:               %8s",
+                opmod_to_string(this->opmod_).c_str());
+  ESP_LOGCONFIG(TAG, "  TX queue length:          %3d", this->queue_len_);
+}
+
+void SX127XComponent::_tx_callback(sx127x_t *device) {
+  void *context = sx127x_get_user_context(device);
+  SX127XComponent *sx127x = static_cast<SX127XComponent *>(context);
+  sx127x->tx_callback();
+}
+
+void SX127XComponent::_rx_callback(sx127x_t *device, uint8_t *payload,
+                                   uint16_t len) {
+  void *context = sx127x_get_user_context(device);
+  SX127XComponent *sx127x = static_cast<SX127XComponent *>(context);
+  sx127x->rx_callback(std::vector<uint8_t>(payload, payload + len));
+}
+
+std::string opmod_to_string(sx127x_mode_t opmod) {
+  switch (opmod) {
+  case SX127x_MODE_SLEEP:
+    return "sleep";
+  case SX127x_MODE_STANDBY:
+    return "standby";
+  case SX127x_MODE_TX:
+    return "tx";
+  case SX127x_MODE_RX_CONT:
+    return "rx";
+  default:
+    return std::to_string(opmod);
+  }
 }
 
 } // namespace sx127x

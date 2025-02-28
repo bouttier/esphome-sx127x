@@ -10,10 +10,6 @@
 namespace esphome {
 namespace sx127x {
 
-template <typename... Ts> class EnterDeepSleepAction;
-
-template <typename... Ts> class PreventDeepSleepAction;
-
 template <typename... Ts>
 class SX127XSendAction : public Action<Ts...>,
                          public Parented<SX127XComponent> {
@@ -43,17 +39,14 @@ protected:
 };
 
 template <typename... Ts>
-class SX127XStartRXAction : public Action<Ts...>,
-                            public Parented<SX127XComponent> {
+class SX127XSetOpmodAction : public Action<Ts...>,
+                             public Parented<SX127XComponent> {
 public:
-  void play(Ts... x) override { this->parent_->enable_rx(); }
-};
+  TEMPLATABLE_VALUE(sx127x_mode_t, opmod)
 
-template <typename... Ts>
-class SX127XStopRXAction : public Action<Ts...>,
-                           public Parented<SX127XComponent> {
-public:
-  void play(Ts... x) override { this->parent_->disable_rx(); }
+  void play(Ts... x) override {
+    this->parent_->change_opmod(this->opmod_.value(x...));
+  }
 };
 
 class SX127XRecvTrigger : public Trigger<std::vector<uint8_t>> {
@@ -62,6 +55,13 @@ public:
     parent->add_on_packet_callback(
         [this](const std::vector<uint8_t> &value) { this->trigger(value); });
   }
+};
+
+template <typename... Ts>
+class SX127XIsTransmittingCondition : public Condition<Ts...>,
+                                      public Parented<SX127XComponent> {
+public:
+  bool check(Ts... x) override { return this->parent_->is_transmitting(); }
 };
 
 } // namespace sx127x
