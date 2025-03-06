@@ -1,0 +1,12 @@
+packages:
+  sx127x: !include sx127x.yaml
+
+sx127x:
+  opmod: rx
+  on_packet:
+    then:
+      - logger.log:
+          format: "Received %d bytes LoRa packet with SNR %.2f dB and RSSI %d dBm"
+          args: [ "payload.size()", "snr", "rssi" ]
+      - sx127x.send: !lambda |-
+          return payload;

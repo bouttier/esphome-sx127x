@@ -1,0 +1,20 @@
+packages:
+  sx127x: !include sx127x.yaml
+
+esphome:
+  on_boot:
+  - priority: 0
+    then:
+      - delay: 2sec
+      - sx127x.send: "inline message"
+      - sx127x.send:
+          payload: "payload message"
+      - sx127x.send: [0xA1, 0xA2, 0xA3]
+      - sx127x.send:
+          payload: !lambda |-
+            std::string message = "lambda message";
+            return std::vector<uint8_t>(message.begin(), message.end());
+      - sx127x.send:
+          payload: !lambda |-
+            std::string message = "lambda message";
+            return std::vector<uint8_t>(message.begin(), message.end());

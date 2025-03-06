@@ -1,0 +1,12 @@
+external_components:
+  # - source: github://bouttier/esphome-sx127x@main
+  - source: /config/esphome-sx127x/components
+    components: ["sx127x"]
+
+sx127x:
+  cs_pin: "${cs_pin}"
+  reset_pin: ${reset_pin}
+  dio0_pin: ${dio0_pin}
+
+  rf_frequency: 433000000
+  lora_syncword: 0xC3

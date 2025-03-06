@@ -1,0 +1,18 @@
+packages:
+  sx127x: !include
+    file: sx127x.yaml
+    vars:
+      lora_spreading_factor: "SF12"
+
+esphome:
+  on_boot:
+  - priority: 0
+    then:
+      - delay: 2s
+      - logger.log: "Sending…"
+      - sx127x.send: "message"
+      - wait_until:
+          condition:
+            not:
+              sx127x.is_transmitting:
+      - logger.log: "Message sent"

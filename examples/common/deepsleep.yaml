@@ -1,0 +1,23 @@
+packages:
+  sx127x: !include sx127x.yaml
+
+deep_sleep:
+  id: deep_sleep_1
+
+sx127x:
+  opmod: rx
+  on_packet:
+    then:
+      - logger.log:
+          format: "Received %d bytes LoRa packet with SNR %.2f dB and RSSI %d dBm"
+          args: [ "payload.size()", "snr", "rssi" ]
+
+esphome:
+  on_boot:
+  - priority: 0
+    then:
+      - delay: 10s
+      - sx127x.set_opmod: sleep  # important for power consumption
+      - deep_sleep.enter:
+          id: deep_sleep_1
+          sleep_duration: 10s

@@ -1,0 +1,25 @@
+packages:
+  sx127x: !include sx127x.yaml
+
+sx127x:
+  queue_len: 4
+
+esphome:
+  on_boot:
+  - priority: 0
+    then:
+      - delay: 2sec
+      - logger.log: "Start sending…"
+      - sx127x.send: "this is a pretty long message 1"  # immediately sent
+      - sx127x.send: "this is a pretty long message 2"  # goes in the queue with next 4 messages
+      - sx127x.send: "this is a pretty long message 3"
+      - sx127x.send: "this is a pretty long message 4"
+      - sx127x.send: "this is a pretty long message 5"
+      - sx127x.send: "this is a pretty long message 6" # dropped
+      - sx127x.send: "this is a pretty long message 7" # dropped
+      - logger.log: "All message queued for sending"
+      - wait_until:
+          condition:
+            not:
+              sx127x.is_transmitting:
+      - logger.log: "All messages sent"

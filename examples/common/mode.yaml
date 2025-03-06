@@ -1,0 +1,30 @@
+packages:
+  sx127x: !include sx127x.yaml
+
+sx127x:
+  lora_spreading_factor: "SF12"
+  opmod: sleep
+
+esphome:
+  on_boot:
+  - priority: 0
+    then:
+      - delay: 2s
+      - sx127x.send: message
+      - delay: 2s
+      - logger.log: "Set opmod RX"
+      - sx127x.set_opmod:
+          opmod: rx
+      - delay: 2s
+      - sx127x.send: message
+      - delay: 2s
+      - logger.log: "Set opmod standby"
+      - sx127x.set_opmod: standby
+      - delay: 2s
+      - sx127x.send: message
+      - delay: 2s
+      - logger.log: "Set opmod sleep"
+      - sx127x.set_opmod: sleep
+      - delay: 2s
+      - sx127x.send: message
+      - delay: 2s

@@ -1,0 +1,37 @@
+packages:
+  sx127x: !include sx127x.yaml
+
+deep_sleep:
+  id: deep_sleep_1
+  wakeup_pin:
+    number: ${dio0_pin}
+    mode:
+      input: true
+    allow_other_uses: true
+
+sx127x:
+  dio0_pin:
+    number: ${dio0_pin}
+    mode:
+      input: true
+    allow_other_uses: true
+  on_packet:
+    then:
+      - logger.log:
+          format: "Received %d bytes LoRa packet with SNR %.2f dB and RSS %d dBm"
+          args: [ "payload.size()", "snr", "rssi" ]
+
+esphome:
+  opmod: rx
+  on_boot:
+  - priority: 0
+    then:
+      - delay: 2s
+      - sx127x.send: [0xA1, 0xA2]
+      - wait_until:
+          condition:
+            not:
+              sx127x.is_transmitting:
+      - deep_sleep.enter:
+          id: deep_sleep_1
+          sleep_duration: 30s

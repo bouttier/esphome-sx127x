@@ -1,0 +1,19 @@
+packages:
+  sx127x: !include sx127x.yaml
+
+sx127x:
+  on_packet:
+    then:
+      - logger.log: "Packet received!"
+      - lambda: |-
+          if (x == std::vector<uint8_t>{0xCA, 0x00}) {
+            id(switch_sx127x_rx).turn_off();
+          } else if (x == std::vector<uint8_t>{0xCA, 0x01}) {
+            id(switch_sx127x_rx).turn_on();
+          }
+
+switch:
+  - platform: template
+    id: switch_sx127x_rx
+    name: "SX127x Switch"
+    optimistic: true
