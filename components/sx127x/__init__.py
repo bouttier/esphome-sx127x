@@ -198,7 +198,13 @@ async def to_code(config):
     for conf in config.get("on_packet", []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
         await automation.build_automation(
-            trigger, [(cg.std_vector.template(cg.uint8), "payload")], conf
+            trigger,
+            [
+                (cg.std_vector.template(cg.uint8), "payload"),
+                (cg.float_, "snr"),
+                (cg.int16, "rssi"),
+            ],
+            conf,
         )
 
 

@@ -35,8 +35,8 @@ public:
   void change_opmod(sx127x_mode_t opmod);
 
   // Triggers
-  void
-  add_on_packet_callback(std::function<void(std::vector<uint8_t>)> &&callback) {
+  void add_on_packet_callback(
+      std::function<void(std::vector<uint8_t>, float, int16_t)> &&callback) {
     this->rx_callback_.add(std::move(callback));
   }
 
@@ -107,7 +107,7 @@ protected:
 
   sx127x_t device_;
   TaskHandle_t handle_interrupt_;
-  CallbackManager<void(std::vector<uint8_t>)> rx_callback_;
+  CallbackManager<void(std::vector<uint8_t>, float, int16_t)> rx_callback_;
   std::deque<std::vector<uint8_t>> tx_queue_;
 
   void reset();

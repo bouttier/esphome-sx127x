@@ -216,10 +216,15 @@ void SX127XComponent::tx_callback() {
 }
 
 void SX127XComponent::rx_callback(std::vector<uint8_t> payload) {
-  ESP_LOGD(TAG, "RX %d bytes packet", payload.size());
+  int16_t rssi;
+  sx127x_rx_get_packet_rssi(&device_, &rssi);
+  float snr = std::numeric_limits<float>::quiet_NaN();
+  sx127x_lora_rx_get_packet_snr(&device_, &snr);
+  ESP_LOGD(TAG, "RX %d bytes packet with SNR %.2f dB and RSSI %d dBm",
+           payload.size(), snr, rssi);
   this->update_opmod();
   this->packets_rx_incr();
-  this->rx_callback_.call(payload);
+  this->rx_callback_.call(payload, snr, rssi);
 }
 
 void SX127XComponent::change_opmod(sx127x_mode_t opmod) {

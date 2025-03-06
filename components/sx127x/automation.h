@@ -49,11 +49,13 @@ public:
   }
 };
 
-class SX127XRecvTrigger : public Trigger<std::vector<uint8_t>> {
+class SX127XRecvTrigger : public Trigger<std::vector<uint8_t>, float, int16_t> {
 public:
   explicit SX127XRecvTrigger(SX127XComponent *parent) {
     parent->add_on_packet_callback(
-        [this](const std::vector<uint8_t> &value) { this->trigger(value); });
+        [this](const std::vector<uint8_t> &payload, float snr, int16_t rssi) {
+          this->trigger(payload, snr, rssi);
+        });
   }
 };
 
