@@ -14,22 +14,10 @@ template <typename... Ts>
 class SX127XSendAction : public Action<Ts...>,
                          public Parented<SX127XComponent> {
 public:
-  void set_payload_template(std::function<std::vector<uint8_t>(Ts...)> func) {
-    this->payload_func_ = func;
-    this->static_ = false;
-  }
-  void set_payload_static(const std::vector<uint8_t> &payload) {
-    this->payload_static_ = payload;
-    this->static_ = true;
-  }
+  TEMPLATABLE_VALUE(std::vector<uint8_t>, payload);
 
   void play(Ts... x) override {
-    if (this->static_) {
-      this->parent_->send(this->payload_static_);
-    } else {
-      auto val = this->payload_func_(x...);
-      this->parent_->send(val);
-    }
+    this->parent_->send(this->payload_.value(x...));
   }
 
 protected:

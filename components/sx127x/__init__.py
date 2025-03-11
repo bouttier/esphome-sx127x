@@ -220,7 +220,7 @@ LORA_SEND_ACTION_SCHEMA = cv.maybe_simple_value(
 LORA_SET_OPMOD_ACTION_SCHEMA = cv.maybe_simple_value(
     {
         cv.GenerateID(): cv.use_id(SX127XComponent),
-        cv.Required(CONF_OPMOD): cv.enum(OPMOD),
+        cv.Required(CONF_OPMOD): cv.templatable(cv.enum(OPMOD)),
     },
     key=CONF_OPMOD,
 )
@@ -242,12 +242,10 @@ async def sx127x_send_action_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
     await cg.register_parented(var, config[CONF_ID])
 
-    payload = config[CONF_PAYLOAD]
-    if cg.is_template(payload):
-        template = await cg.templatable(payload, args, cg.std_vector.template(cg.uint8))
-        cg.add(var.set_payload_template(template))
-    else:
-        cg.add(var.set_payload_static(payload))
+    template = await cg.templatable(
+        config[CONF_PAYLOAD], args, cg.std_vector.template(cg.uint8)
+    )
+    cg.add(var.set_payload(template))
 
     return var
 
@@ -260,7 +258,12 @@ async def sx127x_send_action_to_code(config, action_id, template_arg, args):
 async def sx127x_mode_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
     await cg.register_parented(var, config[CONF_ID])
-    cg.add(var.set_opmod(config[CONF_OPMOD]))
+    template = await cg.templatable(
+        config[CONF_OPMOD],
+        args,
+        SX127XMode,
+    )
+    cg.add(var.set_opmod(template))
     return var
 
 
