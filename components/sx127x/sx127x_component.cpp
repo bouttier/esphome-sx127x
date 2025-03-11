@@ -161,7 +161,7 @@ void SX127XComponent::send(const std::vector<uint8_t> &payload) {
     ESP_LOGD(TAG, "send: cancelled due to failed state");
     return;
   }
-  if (this->is_transmitting()) {
+  if (this->is_transmitting() || !this->is_ready()) {
     if (this->tx_queue_.size() >= this->queue_len_) {
       ESP_LOGE(TAG, "send: queue is full, message dropped");
       return;
@@ -235,7 +235,8 @@ void SX127XComponent::change_opmod(sx127x_mode_t opmod) {
   if (this->opmod_ == opmod)
     return;
   this->set_opmod(opmod);
-  this->update_opmod();
+  if (this->is_ready())
+    this->update_opmod();
 }
 
 int SX127XComponent::update_opmod() {
