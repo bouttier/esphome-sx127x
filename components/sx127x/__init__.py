@@ -25,6 +25,7 @@ CONF_ON_PACKET = "on_packet"
 CONF_RESET_PIN = "reset_pin"
 CONF_RF_FREQUENCY = "rf_frequency"
 CONF_TX_POWER = "tx_power"
+CONF_PA_PIN = "pa_pin"
 CONF_OPMOD = "opmod"
 CONF_QUEUE_LEN = "queue_len"
 
@@ -56,6 +57,7 @@ SX127XSpreadingFactor = cg.global_ns.enum("sx127x_sf_t")
 SX127XCodeRate = cg.global_ns.enum("sx127x_cr_t")
 SX127XBandwidth = cg.global_ns.enum("sx127x_bw_t")
 SX127XMode = cg.global_ns.enum("sx127x_mode_t")
+SX127XPaPin = cg.global_ns.enum("sx127x_pa_pin_t")
 
 
 def validate_raw_data(value):
@@ -101,9 +103,15 @@ OPMOD = {
     "rx": SX127XMode.SX127x_MODE_RX_CONT,
 }
 
+PA_PIN = {
+    "RFO": SX127XPaPin.SX127x_PA_PIN_RFO,
+    "PA_BOOST": SX127XPaPin.SX127x_PA_PIN_BOOST,
+}
+
 # LoRa Radio Parameters
 CONF_DEFAULT_RF_FREQUENCY = 915e6  # Hz
 CONF_DEFAULT_TX_POWER = 4  # dBm
+CONF_DEFAULT_PA_PIN = "RFO"
 CONF_DEFAULT_LORA_BANDWIDTH = 125e3  # Hz
 CONF_DEFAULT_LORA_SPREADING_FACTOR = "SF7"  # [SF6..SF12]
 CONF_DEFAULT_LORA_CODINGRATE = "CR_4_5"  # [4/5, 4/6, 4/7, 4/8]
@@ -125,6 +133,7 @@ CONFIG_SCHEMA = (
                 CONF_RF_FREQUENCY, default=CONF_DEFAULT_RF_FREQUENCY
             ): cv.int_range(min=137000000, max=1020000000),
             cv.Optional(CONF_TX_POWER, default=CONF_DEFAULT_TX_POWER): cv.int_,
+            cv.Optional(CONF_PA_PIN, default=CONF_DEFAULT_PA_PIN): cv.enum(PA_PIN),
             cv.Optional(
                 CONF_LORA_BANDWIDTH, default=CONF_DEFAULT_LORA_BANDWIDTH
             ): cv.enum(BW),
@@ -173,6 +182,19 @@ async def to_code(config):
         repository="https://github.com/bouttier/sx127x.git#callback_context",
     )
 
+    if config[CONF_PA_PIN] == "RFO":
+        if config[CONF_TX_POWER] < -4 or config[CONF_TX_POWER] > 15:
+            raise cv.Invalid("With RFO pin, TX power must be in range [-4,15]")
+    elif config[CONF_PA_PIN] == "PA_BOOST":
+        if (
+            config[CONF_TX_POWER] < 2
+            or config[CONF_TX_POWER] > 20
+            or config[CONF_TX_POWER] in [18, 19]
+        ):
+            raise cv.Invalid(
+                "With PA_BOOST pin, TX power must be in range [2,17] or be 20"
+            )
+
     var = cg.new_Pvariable(config[CONF_ID])
     await spi.register_spi_device(var, config)
     await cg.register_component(var, config)
@@ -185,6 +207,7 @@ async def to_code(config):
 
     cg.add(var.set_rf_frequency(config[CONF_RF_FREQUENCY]))
     cg.add(var.set_tx_power(config[CONF_TX_POWER]))
+    cg.add(var.set_pa_pin(config[CONF_PA_PIN]))
     cg.add(var.set_lora_bandwidth(config[CONF_LORA_BANDWIDTH]))
     cg.add(var.set_lora_spreading_factor(config[CONF_LORA_SPREADING_FACTOR]))
     cg.add(var.set_lora_enable_crc(config[CONF_LORA_CRC]))

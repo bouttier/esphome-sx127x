@@ -47,6 +47,7 @@ public:
     this->rf_frequency_ = rf_frequency;
   }
   void set_tx_power(uint8_t tx_power) { this->tx_power_ = tx_power; }
+  void set_pa_pin(sx127x_pa_pin_t pa_pin) { this->pa_pin_ = pa_pin; }
   void set_lora_bandwidth(sx127x_bw_t lora_bandwidth) {
     this->lora_bandwidth_ = lora_bandwidth;
   }
@@ -89,6 +90,7 @@ protected:
   // lora configuration
   uint32_t rf_frequency_;
   uint8_t tx_power_;
+  sx127x_pa_pin_t pa_pin_;
   sx127x_bw_t lora_bandwidth_;
   sx127x_sf_t lora_spreading_factor_;
   bool lora_enable_crc_;

@@ -124,9 +124,9 @@ void SX127XComponent::configure() {
   }
 
   // TX
-  ESP_LOGCONFIG(TAG, "sx127x_tx_set_pa_config(PA_PIN_BOOST, tx_power=%d)",
-                this->tx_power_);
-  if (sx127x_tx_set_pa_config(SX127x_PA_PIN_BOOST, tx_power_, &device_)) {
+  ESP_LOGCONFIG(TAG, "sx127x_tx_set_pa_config(pa_pin=%d, tx_power=%d)",
+                this->pa_pin_, this->tx_power_);
+  if (sx127x_tx_set_pa_config(pa_pin_, tx_power_, &device_)) {
     this->mark_failed();
     return;
   }
