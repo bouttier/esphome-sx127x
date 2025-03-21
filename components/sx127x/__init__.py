@@ -218,7 +218,7 @@ async def to_code(config):
     cg.add(var.set_opmod(config[CONF_OPMOD]))
     cg.add(var.set_queue_len(config[CONF_QUEUE_LEN]))
 
-    for conf in config.get("on_packet", []):
+    for conf in config.get(CONF_ON_PACKET, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
         await automation.build_automation(
             trigger,
