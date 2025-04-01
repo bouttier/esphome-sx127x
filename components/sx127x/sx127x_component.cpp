@@ -200,11 +200,11 @@ void SX127XComponent::xmit(const std::vector<uint8_t> &payload) {
     return;
   }
   auto f = std::bind(&SX127XComponent::xmit_timeout, this);
-  this->set_timeout("timeout", 4000, f);
+  this->set_timeout("timeout", 8000, f);
 }
 
 void SX127XComponent::xmit_timeout() {
-  ESP_LOGE(TAG, "TX timout");
+  ESP_LOGE(TAG, "TX timeout");
   this->send_next();
 }
 
