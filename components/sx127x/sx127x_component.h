@@ -71,6 +71,9 @@ public:
   }
   void set_opmod(sx127x_mode_t opmod) { this->opmod_ = opmod; }
   void set_queue_len(unsigned int queue_len) { this->queue_len_ = queue_len; }
+  void set_timeout_ms(unsigned int timeout_ms) {
+    this->timeout_ms_ = timeout_ms;
+  }
 
   // Conditions
   bool is_transmitting() { return this->transmitting_; }
@@ -100,6 +103,7 @@ protected:
   bool lora_invert_iq_;
   sx127x_mode_t opmod_;
   unsigned int queue_len_;
+  unsigned int timeout_ms_;
 
   bool dio0_flag_;
   bool transmitting_;

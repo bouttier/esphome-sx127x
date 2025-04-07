@@ -28,6 +28,7 @@ CONF_TX_POWER = "tx_power"
 CONF_PA_PIN = "pa_pin"
 CONF_OPMOD = "opmod"
 CONF_QUEUE_LEN = "queue_len"
+CONF_TIMEOUT = "timeout"
 
 sx127x_ns = cg.esphome_ns.namespace("sx127x")
 
@@ -121,6 +122,7 @@ CONF_DEFAULT_LORA_IQ_INVERSION = False
 CONF_DEFAULT_LORA_SYNCWORD = 0x12
 CONF_DEFAULT_OPMOD = "standby"
 CONF_DEFAULT_QUEUE_LEN = 10
+CONF_DEFAULT_TIMEOUT = "10s"
 
 CONFIG_SCHEMA = (
     cv.Schema(
@@ -162,6 +164,9 @@ CONFIG_SCHEMA = (
                     cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(SX127XRecvTrigger),
                 }
             ),
+            cv.Optional(
+                CONF_TIMEOUT, default=CONF_DEFAULT_TIMEOUT
+            ): cv.positive_time_period_milliseconds,
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -217,6 +222,7 @@ async def to_code(config):
     cg.add(var.set_lora_invert_iq(config[CONF_LORA_INVERT_IQ]))
     cg.add(var.set_opmod(config[CONF_OPMOD]))
     cg.add(var.set_queue_len(config[CONF_QUEUE_LEN]))
+    cg.add(var.set_timeout_ms(config[CONF_TIMEOUT]))
 
     for conf in config.get(CONF_ON_PACKET, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
