@@ -42,8 +42,18 @@ void SX127XComponent::setup() {
 
   ESP_LOGCONFIG(TAG, "sx127x_create");
   if (sx127x_create(this, &device_)) {
-    this->mark_failed();
-    return;
+    if (!reconfigure) { // second try with reset
+      ESP_LOGW(TAG, "sx127x_create failed, re-try after reset of transceiver");
+      this->reset();
+      reconfigure = true;
+      if (sx127x_create(this, &device_)) {
+        this->mark_failed();
+        return;
+      }
+    } else {
+      this->mark_failed();
+      return;
+    }
   }
   sx127x_set_user_context(this, &device_);
 
