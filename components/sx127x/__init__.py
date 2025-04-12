@@ -13,6 +13,7 @@ MULTI_CONF = True
 CODEOWNERS = ["@bouttier"]
 DEPENDANCIES = ["spi"]
 
+CONF_RESET = "reset"
 CONF_DIO0_PIN = "dio0_pin"
 CONF_LORA_BANDWIDTH = "lora_bandwidth"
 CONF_LORA_CODINGRATE = "lora_codingrate"
@@ -110,6 +111,7 @@ PA_PIN = {
 }
 
 # LoRa Radio Parameters
+CONF_DEFAULT_RESET = True
 CONF_DEFAULT_RF_FREQUENCY = 915e6  # Hz
 CONF_DEFAULT_TX_POWER = 4  # dBm
 CONF_DEFAULT_PA_PIN = "PA_BOOST"
@@ -167,6 +169,7 @@ CONFIG_SCHEMA = (
             cv.Optional(
                 CONF_TIMEOUT, default=CONF_DEFAULT_TIMEOUT
             ): cv.positive_time_period_milliseconds,
+            cv.Optional(CONF_RESET, default=CONF_DEFAULT_RESET): cv.boolean,
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -223,6 +226,7 @@ async def to_code(config):
     cg.add(var.set_opmod(config[CONF_OPMOD]))
     cg.add(var.set_queue_len(config[CONF_QUEUE_LEN]))
     cg.add(var.set_timeout_ms(config[CONF_TIMEOUT]))
+    cg.add(var.set_reset(config[CONF_RESET]))
 
     for conf in config.get(CONF_ON_PACKET, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)

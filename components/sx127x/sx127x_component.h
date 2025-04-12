@@ -74,6 +74,7 @@ public:
   void set_timeout_ms(unsigned int timeout_ms) {
     this->timeout_ms_ = timeout_ms;
   }
+  void set_reset(bool reset) { this->reset_ = reset; }
 
   // Conditions
   bool is_transmitting() { return this->transmitting_; }
@@ -107,6 +108,7 @@ protected:
 
   bool dio0_flag_;
   bool transmitting_;
+  bool reset_;
 
   uint16_t lora_packets_rx_;
   uint16_t lora_packets_tx_;

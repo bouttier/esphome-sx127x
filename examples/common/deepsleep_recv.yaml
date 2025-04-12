@@ -10,11 +10,13 @@ deep_sleep:
     allow_other_uses: true
 
 sx127x:
+  opmod: rx
   dio0_pin:
     number: ${dio0_pin}
     mode:
       input: true
     allow_other_uses: true
+  reset: false  # do not reset sx127x on wakeup from deep-sleep
   on_packet:
     then:
       - logger.log:
@@ -22,7 +24,6 @@ sx127x:
           args: [ "payload.size()", "snr", "rssi" ]
 
 esphome:
-  opmod: rx
   on_boot:
   - priority: 0
     then:

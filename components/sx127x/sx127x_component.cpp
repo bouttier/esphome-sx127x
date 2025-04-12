@@ -16,7 +16,8 @@ void SX127XComponent::setup() {
   ESP_LOGCONFIG(TAG, "LoRa SX127X Setup (SX1278)");
 
 #ifdef USE_ESP32
-  bool reconfigure = esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED;
+  bool reconfigure =
+      reset_ || esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_UNDEFINED;
 #else
   bool reconfigure = true;
 #endif
